@@ -1,4 +1,3 @@
-
 # UDP Server
 import socket
 import os
@@ -13,10 +12,11 @@ server_socket.bind(server_address)
 print(f"UDP Server กำลังรอข้อมูลที่ {server_address}")
 
 file = None
+expected_sequence = 0
 
 try:
     while True:
-        data, client_address = server_socket.recvfrom(4096)
+        data, client_address = server_socket.recvfrom(2048)
 
         # หากยังไม่มีไฟล์ ให้รับชื่อไฟล์
         if not file:
@@ -35,13 +35,19 @@ try:
         sequence_number = int.from_bytes(data[:4], 'big')
         message = data[4:]
 
-        print(f"[Seq {sequence_number}] จาก {client_address}: รับข้อมูล {len(message)} ไบต์")
+        # ตรวจสอบการส่งซ้ำ
+        if sequence_number < expected_sequence:
+            print(f"[Server] ได้รับข้อมูลซ้ำ: Seq {sequence_number}")
+        else:
+            print(f"[Seq {sequence_number}] จาก {client_address}: รับข้อมูล {len(message)} ไบต์")
 
-        # เขียนข้อมูลไบนารีลงไฟล์
-        file.write(message)
+            # เขียนข้อมูลไบนารีลงไฟล์
+            if sequence_number == expected_sequence:
+                file.write(message)
+                expected_sequence += 1
 
-        # ส่งข้อความตอบกลับ
-        server_socket.sendto(b"Received message"+b': '+str(sequence_number).encode('utf-8'), client_address)
+        # ส่ง ACK กลับ
+        server_socket.sendto(sequence_number.to_bytes(4, 'big'), client_address)
 
 finally:
     if file:

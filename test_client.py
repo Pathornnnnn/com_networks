@@ -13,7 +13,7 @@ filename = os.path.basename(file_path)
 # กำหนด IP และ Port ของ Server
 server_address = ('127.0.0.1', 12345)
 
-CHUNK_SIZE = 2048
+CHUNK_SIZE = 1024
 
 try:
     sequence_number = 0
@@ -23,7 +23,7 @@ try:
 
     # รอการยืนยันจาก Server
     try:
-        data, _ = client_socket.recvfrom(2048)
+        data, _ = client_socket.recvfrom(1024)
         print(f"Server: {data.decode('utf-8')}")
     except socket.timeout:
         print("Error: ไม่ได้รับการตอบกลับจาก Server")
@@ -39,15 +39,25 @@ try:
             # รวม sequence number (4 ไบต์) กับข้อมูล
             data_packet = sequence_number.to_bytes(4, 'big') + chunk
 
-            # ส่งข้อมูลไปยัง Server พร้อม retry
-            for attempt in range(3):
+            # ส่งข้อมูลไปยัง Server พร้อม retry (สูงสุด 5 ครั้ง)
+            retries = 0
+            while retries < 5:
                 try:
                     client_socket.sendto(data_packet, server_address)
-                    data, _ = client_socket.recvfrom(2048)
-                    print(f"ข้อความจาก Server: {data.decode('utf-8')}")
-                    break  # ออกจาก loop หากส่งสำเร็จ
+                    data, _ = client_socket.recvfrom(1024)
+
+                    # ตรวจสอบ ACK
+                    ack_number = int.from_bytes(data, 'big')
+                    if ack_number == sequence_number:
+                        print(f"[Client] ส่งข้อมูลสำเร็จ: Seq {sequence_number}")
+                        break  # ออกจาก loop หากส่งสำเร็จ
                 except socket.timeout:
-                    print(f"Retry ({attempt + 1}/3) ส่งข้อความไม่สำเร็จ: Seq {sequence_number}")
+                    retries += 1
+                    print(f"[Client] Timeout! ส่งใหม่: Seq {sequence_number} (Retry {retries})")
+
+            if retries == 5:
+                print(f"[Client] ล้มเหลวในการส่ง: Seq {sequence_number}")
+                exit(1)
 
             sequence_number += 1
 
@@ -56,3 +66,4 @@ try:
 
 finally:
     client_socket.close()
+
